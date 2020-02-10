@@ -265,6 +265,8 @@ def training_loop(
         G.setup_weight_histograms(); D.setup_weight_histograms()
     metrics = metric_base.MetricGroup(metric_arg_list)
 
+    print('Training schedule configuration is: {}'.format(sched_args))
+
     print('Training for %d kimg...\n' % total_kimg)
     dnnlib.RunContext.get().update('', cur_epoch=resume_kimg, max_epoch=total_kimg)
     maintenance_time = dnnlib.RunContext.get().get_last_update_interval()
