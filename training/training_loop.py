@@ -11,6 +11,9 @@ import tensorflow as tf
 import dnnlib
 import dnnlib.tflib as tflib
 from dnnlib.tflib.autosummary import autosummary
+import os
+import glob
+import re
 
 from training import dataset
 from training import misc
@@ -129,7 +132,7 @@ def training_loop(
     save_tf_graph           = False,    # Include full TensorFlow computation graph in the tfevents file?
     save_weight_histograms  = False,    # Include weight histograms in the tfevents file?
     resume_pkl              = None,     # Network pickle to resume training from, None = train from scratch.
-    resume_kimg             = 0.0,      # Assumed training progress at the beginning. Affects reporting and training schedule.
+    resume_kimg             = 0,      # Assumed training progress at the beginning. Affects reporting and training schedule.
     resume_time             = 0.0,      # Assumed wallclock time at the beginning. Affects reporting.
     resume_with_new_nets    = False):   # Construct new networks according to G_args and D_args before resuming training?
 
@@ -150,10 +153,17 @@ def training_loop(
             D = tflib.Network('D', num_channels=training_set.shape[0], resolution=training_set.shape[1], label_size=training_set.label_size, **D_args)
             Gs = G.clone('Gs')
         if resume_pkl is not None:
+            result_network_pickles = sorted(glob.glob(os.path.join(dnnlib.submit_config.run_dir_root, '0*', 'network-*.pkl')))
+            if len(result_network_pickles) > 0:
+                resume_pkl = result_network_pickles[-1]
+                RE_KIMG = re.compile('network-snapshot-(\d+).pkl')
+                resume_kimg = int(RE_KIMG.match(os.path.basename(resume_pkl)).group(1))
             print('Loading networks from "%s"...' % resume_pkl)
             rG, rD, rGs = misc.load_pkl(resume_pkl)
             if resume_with_new_nets: G.copy_vars_from(rG); D.copy_vars_from(rD); Gs.copy_vars_from(rGs)
             else: G = rG; D = rD; Gs = rGs
+
+    print('Starting from %skimg...' % resume_kimg)
 
     # Print layers and generate initial image snapshot.
     G.print_layers(); D.print_layers()
@@ -254,6 +264,8 @@ def training_loop(
     if save_weight_histograms:
         G.setup_weight_histograms(); D.setup_weight_histograms()
     metrics = metric_base.MetricGroup(metric_arg_list)
+
+    print('Training schedule configuration is: {}'.format(sched_args))
 
     print('Training for %d kimg...\n' % total_kimg)
     dnnlib.RunContext.get().update('', cur_epoch=resume_kimg, max_epoch=total_kimg)
